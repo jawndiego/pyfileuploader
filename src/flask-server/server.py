@@ -15,7 +15,3 @@ def members():
 
 if __name__ == "__main__":
     app.run(debug=True)
-
-@approute("/pynecone", methods=["POST"])
-def pynecone():
-    return {"pynecone": []}

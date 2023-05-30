@@ -6,6 +6,7 @@ import * as React from 'react'
 import { WagmiConfig } from 'wagmi'
 import { client } from '../wagmi'
 
+
 function App({ Component, pageProps }: AppProps) {
 	const [mounted, setMounted] = React.useState(false)
 	React.useEffect(() => setMounted(true), [])

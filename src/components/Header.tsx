@@ -7,7 +7,6 @@ export function Header() {
     <div className="flex justify-between items-center p-4">
       <Caisson />
       <div className="flex items-center gap-8">
-
         <ConnectKitButton />
       </div>
     </div>
