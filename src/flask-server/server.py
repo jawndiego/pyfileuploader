@@ -3,10 +3,17 @@ from flask_restful import reqparse, Api, Resource
 from flask_cors import CORS
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings import OpenAIEmbeddings 
+from langchain.vectorstores import Pinecone
+from dotenv import load_dotenv, find_dotenv
 import os
+import pinecone
 
 app = Flask(__name__)
 CORS(app, resources={r"*": {"origins": "http://localhost:3000"}})
+
+load_dotenv(find_dotenv())
 
 def create_drive_folder(folder_name): 
     gauth = GoogleAuth()
@@ -53,13 +60,19 @@ def process_text_file(file_path):
         content = file.read()
 
     # Process content with langchain
-    preprocessor = TextPreprocessor()
-    processed_text = preprocessor.process_text(content)
+    splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000, chunk_overlap=0
+)
+    chunks = splitter.split_text(content)
+
+    embeddings = OpenAIEmbeddings(llm_model_name="text-davinci-002")
+    embeddings_list = embeddings.get_embeddings(chunks)
 
     # Save processed content to a new file
     processed_file_path = os.path.join("/Users/lreyes/Desktop/Github/pyfileuploader/src/flask-server/temp-file-cache", f"{file_path}_processed.txt")
     with open(processed_file_path, 'w') as file:
-        file.write(processed_text)
+        for embedding in embeddings_list:
+            file.write(str(embedding.tolist()) + "\n")
     
     return processed_file_path
 
@@ -88,6 +101,8 @@ def upload_file():
         
         # Here, you can send the processed files to Pinecone. Remember to remove the files afterwards
         # send_file_to_pinecone(processed_filepath)
+        pinecone_vector_store = Pinecone(api_key=os.getenv('PINECONE_API_KEY'), index_name=os.getenv("PINECONE_ENV"))
+        pinecone_vector_store.add_vectors(processed_filepath)
         os.remove(filepath)
         os.remove(processed_filepath)
     return {"message": "Files successfully uploaded"}, 200
