@@ -4,11 +4,22 @@ from flask_cors import CORS
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings 
+from langchain.embeddings.openai import OpenAIEmbeddings 
+from langchain.text_splitter import TokenTextSplitter
+import openai
 from langchain.vectorstores import Pinecone
+from langchain.schema import BaseDocumentTransformer, Document
 from dotenv import load_dotenv, find_dotenv
 import os
 import pinecone
+
+pinecone.init(
+api_key=os.getenv('PINECONE_API_KEY'),
+environment=os.getenv('PINECONE_ENV')
+        )
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
+index_name="pyneconeapp"
 
 app = Flask(__name__)
 CORS(app, resources={r"*": {"origins": "http://localhost:3000"}})
@@ -61,18 +72,36 @@ def process_text_file(file_path):
 
     # Process content with langchain
     splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000, chunk_overlap=0
+    chunk_size=1000, chunk_overlap=20, length_function =len,
 )
     chunks = splitter.split_text(content)
+    # text_splitter = TokenTextSplitter(chunk_size=10, chunk_overlap=0)
+    # texts = text_splitter.split_text(content)
 
-    embeddings = OpenAIEmbeddings(llm_model_name="text-davinci-002")
-    embeddings_list = embeddings.get_embeddings(chunks)
+    embeddings = OpenAIEmbeddings()
+    embeddings_list = embeddings.embed_documents(chunks)
+    # use either chunks or texts .. still getting rate limited
+
+        # pinecone_vector_store = Pinecone(api_key=os.getenv('PINECONE_API_KEY'), index_name=os.getenv("PINECONE_ENV"))
+    documents = [Document(page_content=chunk) for chunk in chunks]
+    
+    index = pinecone.Index(index_name)
+    upsert_response = index.upsert(
+        vectors=[
+            (
+                "new-document-id", # Vector ID 
+                embeddings_list, # Dense vector values
+                {"page_content": chunk} # Vector metadata
+            ) for chunk in chunks
+        ]
+    )
+
 
     # Save processed content to a new file
     processed_file_path = os.path.join("/Users/lreyes/Desktop/Github/pyfileuploader/src/flask-server/temp-file-cache", f"{file_path}_processed.txt")
     with open(processed_file_path, 'w') as file:
         for embedding in embeddings_list:
-            file.write(str(embedding.tolist()) + "\n")
+            file.write(str(embedding) + "\n")
     
     return processed_file_path
 
@@ -96,13 +125,10 @@ def upload_file():
         # Process text file
         processed_filepath = process_text_file(filepath)
         processed_filename = f'{filename}_processed.txt'
+
         # Upload processed file to the "Preprocessed Uploads" folder
         upload_file_to_drive(processed_filename, processed_filepath, preprocessed_uploads_folder_id)
         
-        # Here, you can send the processed files to Pinecone. Remember to remove the files afterwards
-        # send_file_to_pinecone(processed_filepath)
-        pinecone_vector_store = Pinecone(api_key=os.getenv('PINECONE_API_KEY'), index_name=os.getenv("PINECONE_ENV"))
-        pinecone_vector_store.add_vectors(processed_filepath)
         os.remove(filepath)
         os.remove(processed_filepath)
     return {"message": "Files successfully uploaded"}, 200
