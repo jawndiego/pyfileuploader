@@ -9,6 +9,8 @@ from langchain.text_splitter import TokenTextSplitter
 import openai
 from langchain.vectorstores import Pinecone
 from langchain.schema import BaseDocumentTransformer, Document
+from langchain.chains.questions_answering import load_qa_chain
+from langchain.llms import OpenAI
 from dotenv import load_dotenv, find_dotenv
 import os
 import pinecone 
@@ -118,6 +120,56 @@ def check_folder_exists(folder_name):
         return file_list[0]['id']
     else:
         return None
+    
+def get_similar_docs(query, k=2, score = False):
+
+#VIDEO    
+#     index = Pinecone.from_documents(index_name)
+#     if score: 
+#         similar_docs = index.similarity_search_with_score(query, k=k)
+#     else: 
+#         similar_docs= index.similarity_search(query, k=k)
+#     return similar_docs
+
+# query = input()
+# similar_docs = get_similar_docs(query)
+# similar_docs
+
+#GPT
+    query = input()
+    index = Pinecone.from_documents(index_name)
+    query_result = index.query(queries=[query], top_k=k)
+    return query_result
+
+
+def get_answer(query):
+
+    #VIDEO
+    # model_name =    "gpt-3.5-turbo"
+    # llm = OpenAI(model_name=model_name)
+    # chain = load_qa_chain(llm, chain_type="stuff")
+
+    # similar_docs = get_similar_docs(query)
+    # answer = chain.run(input_documents= similar_docs, question=query)
+    # return answer
+
+    #GPT
+    model_name = "gpt-3.5-turbo"
+    llm = OpenAI(model_name=model_name)
+    chain = load_qa_chain(llm, chain_type="stuff")
+       # Fetch similar documents from Pinecone
+    query_result = get_similar_docs(query)
+
+    # Fetch the actual vectors from the Pinecone index
+    index = pinecone.Index(index_name)
+    input_vectors = [index.fetch(ids=[vector_id])[0] for vector_id in query_result.ids]
+
+    # Convert vectors to documents
+    input_documents = [Document(page_content=vector) for vector in input_vectors]
+
+    answer = chain.run(input_documents=input_documents, question=query)
+    return answer
+
 
 # Check if folders exist and get their IDs, create them if they do not exist, this is to avoid the creation of duplicate folders 
 uploads_folder_id = check_folder_exists("Uploads")
