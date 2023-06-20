@@ -8,8 +8,9 @@ from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.text_splitter import TokenTextSplitter
 import openai
 from langchain.vectorstores import Pinecone
+from langchain.chat_models import ChatOpenAI
 from langchain.schema import BaseDocumentTransformer, Document
-from langchain.chains.questions_answering import load_qa_chain
+from langchain.chains.question_answering import load_qa_chain
 from langchain.llms import OpenAI
 from dotenv import load_dotenv, find_dotenv
 import os
@@ -141,34 +142,51 @@ def get_similar_docs(query, k=2, score = False):
     query_result = index.query(queries=[query], top_k=k)
     return query_result
 
+@app.route('/get-info', methods=['POST'])
+def get_info():
+    try:
+        data = request.get_json()
+        print('received data:', data)
+        
+        query = data.get('query')
+        if not query:
+            return {"error": "No query provided"}, 400
+
+        # Use the get_answer function to get the answer for the query
+        answer = get_answer(query)
+
+        return {"answer": answer}, 200
+    except Exception as e:
+        print('Error handling request:', e)
+        return {"error": "Internal server error"}, 500
+
 
 def get_answer(query):
+    try:
+        # Fetch similar documents from Pinecone
+        query_result = get_similar_docs(query)
 
-    #VIDEO
-    # model_name =    "gpt-3.5-turbo"
-    # llm = OpenAI(model_name=model_name)
-    # chain = load_qa_chain(llm, chain_type="stuff")
+        # Fetch the actual vectors from the Pinecone index
+        index = pinecone.Index(index_name)
+        input_vectors = [index.fetch(ids=[vector_id])[0] for vector_id in query_result.ids]
 
-    # similar_docs = get_similar_docs(query)
-    # answer = chain.run(input_documents= similar_docs, question=query)
-    # return answer
+        # Convert vectors to documents
+        input_documents = [Document(page_content=vector) for vector in input_vectors]
 
-    #GPT
-    model_name = "gpt-3.5-turbo"
-    llm = OpenAI(model_name=model_name)
-    chain = load_qa_chain(llm, chain_type="stuff")
-       # Fetch similar documents from Pinecone
-    query_result = get_similar_docs(query)
+        # Initialize the language model
+        model_name = "gpt-3.5-turbo"
+        llm = OpenAI(model_name=model_name)
 
-    # Fetch the actual vectors from the Pinecone index
-    index = pinecone.Index(index_name)
-    input_vectors = [index.fetch(ids=[vector_id])[0] for vector_id in query_result.ids]
+        # Load the question answering chain
+        chain = load_qa_chain(llm, chain_type="stuff")
 
-    # Convert vectors to documents
-    input_documents = [Document(page_content=vector) for vector in input_vectors]
-
-    answer = chain.run(input_documents=input_documents, question=query)
-    return answer
+        # Run the chain with the input documents and question
+        answer = chain.run(input_documents=input_documents, question=query)
+        print('get_answer completed successfully')
+        return answer.answer
+    except Exception as e:
+        print('Error getting answer:', e)
+        return {"error": "Error getting answer"}
 
 
 # Check if folders exist and get their IDs, create them if they do not exist, this is to avoid the creation of duplicate folders 
