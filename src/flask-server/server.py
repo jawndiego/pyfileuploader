@@ -11,7 +11,12 @@ from langchain.vectorstores import Pinecone
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import BaseDocumentTransformer, Document
 from langchain.chains.question_answering import load_qa_chain
+from langchain.chat_models import ChatOpenAI
+from langchain.chains import ConversationalRetrievalChain
 from langchain.llms import OpenAI
+from langchain.prompts.chat import HumanMessage, SystemMessage
+from langchain.schema import Document
+from langchain.retrievers import PineconeHybridSearchRetriever
 from dotenv import load_dotenv, find_dotenv
 import os
 import pinecone 
@@ -82,18 +87,21 @@ def process_text_file(file_path):
     embeddings = OpenAIEmbeddings()
     embeddings_list = embeddings.embed_documents(chunks)
 
-    documents = [Document(page_content=chunk) for chunk in chunks]
-    
     index = pinecone.Index(index_name)
     upsert_response = index.upsert(
-        vectors=[
-            (
-                "new-document-id", # Vector ID 
-                embeddings_list, # Dense vector values
-                {"page_content": chunk} # Vector metadata
-            ) for chunk in chunks
-        ]
-    )
+    vectors=[
+        (
+            f"document-{i}", # Unique vector ID 
+            embedding, # Dense vector values
+            {"page_content": chunk} # Vector metadata
+        ) for i, (chunk, embedding) in enumerate(zip(chunks, embeddings_list))
+    ]
+)
+    print("Upsert response:", upsert_response)
+    # get ready for semantic search 
+
+
+    
 
     # Saves processed content to a new file
     processed_file_path = os.path.join("/Users/lreyes/Desktop/Github/pyfileuploader/src/flask-server/temp-file-cache", f"{file_path}_processed.txt")
@@ -122,25 +130,36 @@ def check_folder_exists(folder_name):
     else:
         return None
     
-def get_similar_docs(query, k=2, score = False):
+# def get_similar_docs(query, k=2):
+#     # Convert the query string into a vector
+#     embeddings = OpenAIEmbeddings()
+#     query_vector = embeddings.embed_documents([query])[0]  # Get the first (and only) vector
 
-#VIDEO    
-#     index = Pinecone.from_documents(index_name)
-#     if score: 
-#         similar_docs = index.similarity_search_with_score(query, k=k)
-#     else: 
-#         similar_docs= index.similarity_search(query, k=k)
+#     # Perform the similarity search
+#     index = pinecone.Index(index_name)
+#     query_result = index.query(queries=[query_vector], top_k=k)
+
+#     # Fetch the actual vectors from the Pinecone index
+#     similar_docs = [index.fetch(ids=[vector_id])[0] for vector_id in query_result.ids]
+
 #     return similar_docs
 
-# query = input()
-# similar_docs = get_similar_docs(query)
-# similar_docs
+def get_similar_docs(query, k=2):
+    # Generate embeddings for the query
+    embeddings = OpenAIEmbeddings()
+    query_embedding = embeddings.embed_documents([query])
 
-#GPT
-    query = input()
-    index = Pinecone.from_documents(index_name)
-    query_result = index.query(queries=[query], top_k=k)
-    return query_result
+    # Use the Pinecone index to find similar documents
+    index = pinecone.Index(index_name)
+    query_result = index.query(queries=[query_embedding[0]], top_k=k)
+
+    # Check if query_result is None or if query_result.ids and/or query_result.metadata are None
+    if query_result is None or query_result.ids is None or query_result.metadata is None:
+        return []
+
+    # Convert the QueryResult to a list of Document objects
+    similar_docs = [Document(id=id, text=metadata['page_content']) for id, metadata in zip(query_result.ids, query_result.metadata)]
+    return similar_docs
 
 @app.route('/get-info', methods=['POST'])
 def get_info():
@@ -158,35 +177,37 @@ def get_info():
         return {"answer": answer}, 200
     except Exception as e:
         print('Error handling request:', e)
-        return {"error": "Internal server error"}, 500
-
-
+        return {"error": str(e)}, 500
+    
 def get_answer(query):
     try:
-        # Fetch similar documents from Pinecone
-        query_result = get_similar_docs(query)
-
-        # Fetch the actual vectors from the Pinecone index
-        index = pinecone.Index(index_name)
-        input_vectors = [index.fetch(ids=[vector_id])[0] for vector_id in query_result.ids]
-
-        # Convert vectors to documents
-        input_documents = [Document(page_content=vector) for vector in input_vectors]
+        # Perform semantic search against Pinecone index
+        top_documents = get_similar_docs(query, k=5)
 
         # Initialize the language model
         model_name = "gpt-3.5-turbo"
-        llm = OpenAI(model_name=model_name)
+        model = ChatOpenAI(model_name=model_name)
 
-        # Load the question answering chain
-        chain = load_qa_chain(llm, chain_type="stuff")
+        # Build context
+        chat_history = []
+        question = HumanMessage(content=str(query))  # Format the question as a HumanMessage
 
-        # Run the chain with the input documents and question
-        answer = chain.run(input_documents=input_documents, question=query)
+        print('Question:', question)
+        print('Chat History:', chat_history)
+        print('Documents:', top_documents)
+
+        # Run the chat model using retrieved top documents
+        messages = [SystemMessage(content=doc.text) for doc in top_documents] + [question]
+        response = model(messages)
+
+        print('Response:', response)
+
         print('get_answer completed successfully')
-        return answer.answer
+        return response.content  # Access the content of the AIMessage object
     except Exception as e:
         print('Error getting answer:', e)
-        return {"error": "Error getting answer"}
+        return {"error": str(e)}
+
 
 
 # Check if folders exist and get their IDs, create them if they do not exist, this is to avoid the creation of duplicate folders 

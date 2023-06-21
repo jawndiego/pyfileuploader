@@ -1,10 +1,14 @@
 import { Header } from '../components'
 import {useEffect, useState} from 'react'
+import { useRouter } from 'next/router'
 
 type MyDragEvent = React.DragEvent<HTMLDivElement>;
 
 
   function Page() {
+
+	const [uploadSuccess, setUploadSuccess] = useState(false);
+	const router = useRouter();
 
 	const onDrop = async (acceptedFiles: File[]): Promise<void> => {
 		try {
@@ -21,6 +25,8 @@ type MyDragEvent = React.DragEvent<HTMLDivElement>;
 	  
 		  if (response.ok) {
 			console.log('All files uploaded successfully');
+			setUploadSuccess(true);
+			router.push('/chatbot')
 		  } else {
 			console.log('Upload failed');
 		  }
