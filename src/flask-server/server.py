@@ -73,6 +73,43 @@ def upload_file_to_drive(filename, filepath, folder_id):
     gfile.Upload() 
 
 # splits text into chunks using langchain, creates embeddings, sends to pinecone
+# def process_text_file(file_path):
+#     # Read file content
+#     with open(file_path, 'r') as file:
+#         content = file.read()
+
+#     # Process content with langchain
+#     splitter = RecursiveCharacterTextSplitter(
+#     chunk_size=1000, chunk_overlap=20, length_function =len,
+# )
+#     chunks = splitter.split_text(content)
+
+#     embeddings = OpenAIEmbeddings()
+#     embeddings_list = embeddings.embed_documents(chunks)
+
+#     index = pinecone.Index(index_name)
+#     upsert_response = index.upsert(
+#     vectors=[
+#         (
+#             f"document-{i}", # Unique vector ID 
+#             embedding, # Dense vector values
+#             {"page_content": chunk} # Vector metadata
+#         ) for i, (chunk, embedding) in enumerate(zip(chunks, embeddings_list))
+#     ]
+# )
+#     print("Upsert response:", upsert_response)
+#     # get ready for semantic search 
+
+
+    
+
+#     # Saves processed content to a new file
+#     processed_file_path = os.path.join("/Users/lreyes/Desktop/Github/pyfileuploader/src/flask-server/temp-file-cache", f"{file_path}_processed.txt")
+#     with open(processed_file_path, 'w') as file:
+#         for embedding in embeddings_list:
+#             file.write(str(embedding) + "\n")
+    
+#     return processed_file_path
 def process_text_file(file_path):
     # Read file content
     with open(file_path, 'r') as file:
@@ -97,11 +134,7 @@ def process_text_file(file_path):
         ) for i, (chunk, embedding) in enumerate(zip(chunks, embeddings_list))
     ]
 )
-    print("Upsert response:", upsert_response)
-    # get ready for semantic search 
-
-
-    
+    print("Upsert response:", upsert_response)  # Print the upsert response
 
     # Saves processed content to a new file
     processed_file_path = os.path.join("/Users/lreyes/Desktop/Github/pyfileuploader/src/flask-server/temp-file-cache", f"{file_path}_processed.txt")
@@ -130,20 +163,50 @@ def check_folder_exists(folder_name):
     else:
         return None
     
+#WORKING BUT NOT fetching the documents 
 # def get_similar_docs(query, k=2):
-#     # Convert the query string into a vector
+#     # Generate embeddings for the query
 #     embeddings = OpenAIEmbeddings()
-#     query_vector = embeddings.embed_documents([query])[0]  # Get the first (and only) vector
+#     query_embedding = embeddings.embed_documents([query])
 
-#     # Perform the similarity search
+#     # Use the Pinecone index to find similar documents
 #     index = pinecone.Index(index_name)
-#     query_result = index.query(queries=[query_vector], top_k=k)
+#     query_result = index.query(queries=[query_embedding[0]], top_k=k)
 
-#     # Fetch the actual vectors from the Pinecone index
-#     similar_docs = [index.fetch(ids=[vector_id])[0] for vector_id in query_result.ids]
 
+#     print('Query Result:', query_result)  # Print the query result
+
+#     # Check if query_result is None or if query_result.ids and/or query_result.metadata are None
+#     if query_result is None or query_result.ids is None or query_result.metadata is None:
+#         return []
+
+#     # Convert the QueryResult to a list of Document objects
+#     similar_docs = [Document(id=id, text=metadata['page_content']) for id, metadata in zip(query_result.ids, query_result.metadata)]
 #     return similar_docs
 
+# document error lol
+# def get_similar_docs(query, k=2):
+#     # Generate embeddings for the query
+#     embeddings = OpenAIEmbeddings()
+#     query_embedding = embeddings.embed_documents([query])
+
+#     # Use the Pinecone index to find similar documents
+#     index = pinecone.Index(index_name)
+#     query_result = index.query(queries=[query_embedding[0]], top_k=k, include_metadata=True)
+
+#     print('Query Result:', query_result)  # Print the query result
+
+#     # Convert the QueryResult to a list of Document objects
+#     similar_docs = []
+#     for match in query_result.results[0].matches:
+#         id = match.id
+#         metadata = match.metadata
+#         print('Metadata:', metadata)  # Print the metadata of each match
+#         if 'page_content' in metadata:
+#             similar_docs.append(Document(id=id, text=metadata['page_content']))
+#     return similar_docs
+
+#nonetype iterable
 def get_similar_docs(query, k=2):
     # Generate embeddings for the query
     embeddings = OpenAIEmbeddings()
@@ -151,14 +214,20 @@ def get_similar_docs(query, k=2):
 
     # Use the Pinecone index to find similar documents
     index = pinecone.Index(index_name)
-    query_result = index.query(queries=[query_embedding[0]], top_k=k)
+    query_result = index.query(queries=[query_embedding[0]], top_k=k, include_metadata=True)
 
-    # Check if query_result is None or if query_result.ids and/or query_result.metadata are None
-    if query_result is None or query_result.ids is None or query_result.metadata is None:
-        return []
+    print('Query Result:', query_result)  # Print the query result
 
     # Convert the QueryResult to a list of Document objects
-    similar_docs = [Document(id=id, text=metadata['page_content']) for id, metadata in zip(query_result.ids, query_result.metadata)]
+    similar_docs = []
+    for match in query_result.results[0].matches:
+        id = match.id
+        metadata = match.metadata
+        print('Metadata:', metadata)  # Print the metadata of each match
+        if 'page_content' in metadata:
+            similar_docs.append(Document(id=id, page_content=metadata['page_content']))
+        else:
+            print(f"Metadata for match {id} does not contain 'page_content'")
     return similar_docs
 
 @app.route('/get-info', methods=['POST'])
@@ -197,7 +266,7 @@ def get_answer(query):
         print('Documents:', top_documents)
 
         # Run the chat model using retrieved top documents
-        messages = [SystemMessage(content=doc.text) for doc in top_documents] + [question]
+        messages = [SystemMessage(content=doc.page_content) for doc in top_documents] + [question]
         response = model(messages)
 
         print('Response:', response)
