@@ -8,7 +8,15 @@ from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.text_splitter import TokenTextSplitter
 import openai
 from langchain.vectorstores import Pinecone
+from langchain.chat_models import ChatOpenAI
 from langchain.schema import BaseDocumentTransformer, Document
+from langchain.chains.question_answering import load_qa_chain
+from langchain.chat_models import ChatOpenAI
+from langchain.chains import ConversationalRetrievalChain
+from langchain.llms import OpenAI
+from langchain.prompts.chat import HumanMessage, SystemMessage
+from langchain.schema import Document
+from langchain.retrievers import PineconeHybridSearchRetriever
 from dotenv import load_dotenv, find_dotenv
 import os
 import pinecone 
@@ -65,6 +73,43 @@ def upload_file_to_drive(filename, filepath, folder_id):
     gfile.Upload() 
 
 # splits text into chunks using langchain, creates embeddings, sends to pinecone
+# def process_text_file(file_path):
+#     # Read file content
+#     with open(file_path, 'r') as file:
+#         content = file.read()
+
+#     # Process content with langchain
+#     splitter = RecursiveCharacterTextSplitter(
+#     chunk_size=1000, chunk_overlap=20, length_function =len,
+# )
+#     chunks = splitter.split_text(content)
+
+#     embeddings = OpenAIEmbeddings()
+#     embeddings_list = embeddings.embed_documents(chunks)
+
+#     index = pinecone.Index(index_name)
+#     upsert_response = index.upsert(
+#     vectors=[
+#         (
+#             f"document-{i}", # Unique vector ID 
+#             embedding, # Dense vector values
+#             {"page_content": chunk} # Vector metadata
+#         ) for i, (chunk, embedding) in enumerate(zip(chunks, embeddings_list))
+#     ]
+# )
+#     print("Upsert response:", upsert_response)
+#     # get ready for semantic search 
+
+
+    
+
+#     # Saves processed content to a new file
+#     processed_file_path = os.path.join("/Users/lreyes/Desktop/Github/pyfileuploader/src/flask-server/temp-file-cache", f"{file_path}_processed.txt")
+#     with open(processed_file_path, 'w') as file:
+#         for embedding in embeddings_list:
+#             file.write(str(embedding) + "\n")
+    
+#     return processed_file_path
 def process_text_file(file_path):
     # Read file content
     with open(file_path, 'r') as file:
@@ -79,18 +124,17 @@ def process_text_file(file_path):
     embeddings = OpenAIEmbeddings()
     embeddings_list = embeddings.embed_documents(chunks)
 
-    documents = [Document(page_content=chunk) for chunk in chunks]
-    
     index = pinecone.Index(index_name)
     upsert_response = index.upsert(
-        vectors=[
-            (
-                "new-document-id", # Vector ID 
-                embeddings_list, # Dense vector values
-                {"page_content": chunk} # Vector metadata
-            ) for chunk in chunks
-        ]
-    )
+    vectors=[
+        (
+            f"document-{i}", # Unique vector ID 
+            embedding, # Dense vector values
+            {"page_content": chunk} # Vector metadata
+        ) for i, (chunk, embedding) in enumerate(zip(chunks, embeddings_list))
+    ]
+)
+    print("Upsert response:", upsert_response)  # Print the upsert response
 
     # Saves processed content to a new file
     processed_file_path = os.path.join("/Users/lreyes/Desktop/Github/pyfileuploader/src/flask-server/temp-file-cache", f"{file_path}_processed.txt")
@@ -118,6 +162,122 @@ def check_folder_exists(folder_name):
         return file_list[0]['id']
     else:
         return None
+    
+#WORKING BUT NOT fetching the documents 
+# def get_similar_docs(query, k=2):
+#     # Generate embeddings for the query
+#     embeddings = OpenAIEmbeddings()
+#     query_embedding = embeddings.embed_documents([query])
+
+#     # Use the Pinecone index to find similar documents
+#     index = pinecone.Index(index_name)
+#     query_result = index.query(queries=[query_embedding[0]], top_k=k)
+
+
+#     print('Query Result:', query_result)  # Print the query result
+
+#     # Check if query_result is None or if query_result.ids and/or query_result.metadata are None
+#     if query_result is None or query_result.ids is None or query_result.metadata is None:
+#         return []
+
+#     # Convert the QueryResult to a list of Document objects
+#     similar_docs = [Document(id=id, text=metadata['page_content']) for id, metadata in zip(query_result.ids, query_result.metadata)]
+#     return similar_docs
+
+# document error lol
+# def get_similar_docs(query, k=2):
+#     # Generate embeddings for the query
+#     embeddings = OpenAIEmbeddings()
+#     query_embedding = embeddings.embed_documents([query])
+
+#     # Use the Pinecone index to find similar documents
+#     index = pinecone.Index(index_name)
+#     query_result = index.query(queries=[query_embedding[0]], top_k=k, include_metadata=True)
+
+#     print('Query Result:', query_result)  # Print the query result
+
+#     # Convert the QueryResult to a list of Document objects
+#     similar_docs = []
+#     for match in query_result.results[0].matches:
+#         id = match.id
+#         metadata = match.metadata
+#         print('Metadata:', metadata)  # Print the metadata of each match
+#         if 'page_content' in metadata:
+#             similar_docs.append(Document(id=id, text=metadata['page_content']))
+#     return similar_docs
+
+#nonetype iterable
+def get_similar_docs(query, k=2):
+    # Generate embeddings for the query
+    embeddings = OpenAIEmbeddings()
+    query_embedding = embeddings.embed_documents([query])
+
+    # Use the Pinecone index to find similar documents
+    index = pinecone.Index(index_name)
+    query_result = index.query(queries=[query_embedding[0]], top_k=k, include_metadata=True)
+
+    print('Query Result:', query_result)  # Print the query result
+
+    # Convert the QueryResult to a list of Document objects
+    similar_docs = []
+    for match in query_result.results[0].matches:
+        id = match.id
+        metadata = match.metadata
+        print('Metadata:', metadata)  # Print the metadata of each match
+        if 'page_content' in metadata:
+            similar_docs.append(Document(id=id, page_content=metadata['page_content']))
+        else:
+            print(f"Metadata for match {id} does not contain 'page_content'")
+    return similar_docs
+
+@app.route('/get-info', methods=['POST'])
+def get_info():
+    try:
+        data = request.get_json()
+        print('received data:', data)
+        
+        query = data.get('query')
+        if not query:
+            return {"error": "No query provided"}, 400
+
+        # Use the get_answer function to get the answer for the query
+        answer = get_answer(query)
+
+        return {"answer": answer}, 200
+    except Exception as e:
+        print('Error handling request:', e)
+        return {"error": str(e)}, 500
+    
+def get_answer(query):
+    try:
+        # Perform semantic search against Pinecone index
+        top_documents = get_similar_docs(query, k=5)
+
+        # Initialize the language model
+        model_name = "gpt-3.5-turbo"
+        model = ChatOpenAI(model_name=model_name)
+
+        # Build context
+        chat_history = []
+        question = HumanMessage(content=str(query))  # Format the question as a HumanMessage
+
+        print('Question:', question)
+        print('Chat History:', chat_history)
+        print('Documents:', top_documents)
+
+        # Run the chat model using retrieved top documents
+        messages = [SystemMessage(content=doc.page_content) for doc in top_documents] + [question]
+        response = model(messages)
+
+        print('Response:', response)
+
+        print('get_answer completed successfully')
+        return response.content  # Access the content of the AIMessage object
+    except Exception as e:
+        print('Error getting answer:', e)
+        return {"error": str(e)}
+
+
 
 # Check if folders exist and get their IDs, create them if they do not exist, this is to avoid the creation of duplicate folders 
 uploads_folder_id = check_folder_exists("Uploads")
