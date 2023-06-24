@@ -18,6 +18,7 @@ from langchain.prompts.chat import HumanMessage, SystemMessage
 from langchain.schema import Document
 from langchain.retrievers import PineconeHybridSearchRetriever
 from dotenv import load_dotenv, find_dotenv
+from web3 import Web3
 import os
 import pinecone 
 
@@ -33,6 +34,26 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 #loads env file 
 load_dotenv(find_dotenv())
+
+# Setu
+
+alchemy_url = "https://eth-mainnet.g.alchemy.com/v2/tWhG7hhqRjLcgVu-yGllA1BonzPjWjjX"
+w3 = Web3(Web3.HTTPProvider(alchemy_url))
+
+# Print if web3 is successfully connected
+print(w3.is_connected())
+
+# Get the latest block number
+latest_block = w3.eth.block_number
+print(latest_block)
+
+# Get the balance of an account
+balance = w3.eth.get_balance('0x742d35Cc6634C0532925a3b844Bc454e4438f44e')
+print(balance)
+
+# Get the information of a transaction
+tx = w3.eth.get_transaction('0x5c504ed432cb51138bcf09aa5e8a410dd4a1e204ef84bfed1be16dfba1b22060')
+print(tx)
 
 app = Flask(__name__)
 CORS(app, resources={r"*": {"origins": "http://localhost:3000"}})

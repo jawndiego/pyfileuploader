@@ -3,12 +3,13 @@ import { Header } from '../components/Header';
 import { Alchemy, Network } from "alchemy-sdk";
 import { ConnectKitButton } from 'connectkit';
 
+
 const CollectionPage: React.FC = () => {
   const [userAddress, setUserAddress] = useState<string | null>(null);
 
   // Setup: npm install alchemy-sdk
   const config = {
-    apiKey: "INSERTAPIKEY",
+    apiKey: "tWhG7hhqRjLcgVu-yGllA1BonzPjWjjX",
     network: Network.ETH_MAINNET,
   };
   const alchemy = new Alchemy(config);
@@ -26,19 +27,8 @@ const CollectionPage: React.FC = () => {
 
   return (
     <div>
-      <Header />
-      <ConnectKitButton.Custom>
-        {({ isConnected, show, truncatedAddress: address }) => {
-          if (isConnected && address) {
-            setUserAddress(address);
-          }
-          return (
-            <button onClick={show}>
-              {isConnected ? address : "Connect Wallet"}
-            </button>
-          );
-        }}
-      </ConnectKitButton.Custom>
+      <Header redirectTo='/'/>
+  
       <h1>Hello there</h1>
     </div>
   );

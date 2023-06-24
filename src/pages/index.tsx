@@ -45,7 +45,7 @@ type MyDragEvent = React.DragEvent<HTMLDivElement>;
 
 	return (
 	  <>
-		<Header />
+		<Header redirectTo="/collection" />
 
 		<main className="flex min-h-screen flex-col items-center justify-between p-24">
 		
