@@ -1,5 +1,5 @@
 import { Header } from '../components'
-import {useEffect, useState} from 'react'
+import {useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/router'
 
 type MyDragEvent = React.DragEvent<HTMLDivElement>;
@@ -41,6 +41,7 @@ type MyDragEvent = React.DragEvent<HTMLDivElement>;
 		  onDrop(files);
 		}
 	  }
+
 
 	return (
 	  <>
@@ -90,7 +91,6 @@ type MyDragEvent = React.DragEvent<HTMLDivElement>;
 		</main>
 	  </>
 	);
-  }
-  
+  } 
+
   export default Page;
-  
