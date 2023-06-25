@@ -3,6 +3,8 @@ import { useRouter } from 'next/router';
 import styled from "styled-components";
 import { useEffect, useState } from 'react';
 
+// FIX: we're currenly stuck in an endless loop with this code. 
+
 const StyledButton = styled.button`
   cursor: pointer;
   position: relative;
@@ -26,24 +28,35 @@ const StyledButton = styled.button`
   }
 `;
 
-export const CustomButton = () => {
+interface CustomButtonProps {
+  redirectTo: string;
+}
+export const CustomButton: React.FC<CustomButtonProps> = ({ redirectTo }) => {
     const router = useRouter();
     const [isConnected, setIsConnected] = useState(false);
     const [ensName, setEnsName] = useState("");
     const [truncatedAddress, setTruncatedAddress] = useState("");
+    const [hasRedirected, setHasRedirected] = useState(false);
   
-    useEffect(() => {
-      if (isConnected) {
-        router.push('/collection');
-      }
-    }, [isConnected]);
+    // useEffect(() => {
+    //   if (!isConnected && router.pathname !== '/' && !hasRedirected) {
+    //     router.push('/');
+    //     setHasRedirected(true);
+    //   } else if (isConnected && router.pathname !== redirectTo && !hasRedirected) {
+    //     router.push(redirectTo);
+    //     setHasRedirected(true);
+    //   }
+    // }, [isConnected]);
   
     return (
       <ConnectKitButton.Custom>
         {({ isConnected: connected, show, truncatedAddress: address, ensName: name }) => {
-          setIsConnected(connected);
-          setEnsName(name ?? "");
-          setTruncatedAddress(address ?? "");
+          if (connected !== isConnected) {
+            setIsConnected(connected);
+            setEnsName(name ?? "");
+            setTruncatedAddress(address ?? "");
+            setHasRedirected(false);
+          }
   
           return (
             <StyledButton onClick={show}>
